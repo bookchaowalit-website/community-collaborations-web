@@ -1,46 +1,44 @@
-# bookchaowalit-collaborations-frontend — Product brief
+# Collaborations (field folio) — Product truth
 
-**Slug:** `bookchaowalit-website/bookchaowalit-collaborations-frontend`  
-**Generated:** 2026-08-11 (bulk Book Dev closeout)  
-**Status:** starter / portfolio boundary
+> Inferred from the code and copy (no user interview). Checked against the portfolio card claims review
+> (`portfolio-site-web/docs/audits/CARD-CLAIMS-REVIEW-2026-10.md`, row `collaborations`) on 2026-10-23.
 
-## Purpose
+## What it is
 
-Portfolio repository under Book Dev. This brief records ownership and the
-current honest status so the nested tree is not an empty shell in the task
-system.
+A client-only page for jotting down collaboration ideas. Notes live in the visitor's browser (`localStorage`, key
+`collabs-v1`). There is no backend, account or shared space.
 
-## Runnable path
+## Who it is for
 
-See `README.md` for install and run instructions when present.
+A portfolio visitor (or the owner) who wants a quick private list of "work that wants another set of hands".
 
-## Limits
+## What works today
 
-- Not claimed as production-ready unless README and tests prove it.
-- Mobile smoke / emulator acceptance is separate and toolchain-dependent.
+1. Plant a note with a title (required), details and a status: Draft, Open, Active or Done.
+2. The header counts Open and Active notes as living threads, plus total notes and notes in view.
+3. Search across title, details and status (case-insensitive); remove a note.
+4. Notes survive a reload in the same browser. Corrupt or wrong-shape saved data falls back to the two sample notes
+   instead of breaking the page; if storage is blocked, notes last for the visit only.
+5. `/api/mcp` answers JSON-RPC `initialize` and `tools/list` with an empty tool list: notes never reach the server,
+   so any `tools/call` is refused with an error.
+6. Front-end and server errors go to Sentry (errors only, personal data stripped) when `NEXT_PUBLIC_SENTRY_DSN` is set.
 
-## Source README excerpt
+## What does not work (and must not be claimed)
 
-```
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+- No skill matching, no proposal submission form, no collaborator accounts or invitations (the portfolio card was
+  corrected to Prototype in the 2026-10 review).
+- No editing a note after it is planted, no sync between devices, no export.
 
-## Getting Started
+## Live URL and deploy state
 
-First, run the development server:
+- Live: https://collaborations.bookchaowalit.com (HTTP 200 on 2026-10-23).
+- The Vercel project `bookchaowalit-collaborations-frontend` is deployed only by CLI. Its last production deploy is
+  the CVE patch (2026-10-23, CLI, commit 6c6e712). Its Git link names the old repository
+  `bookchaowalit/bookchaowalit-collaborations-frontend`, so a push to `main` does not deploy: the L2 work (tests,
+  Sentry, lib store, truthful MCP route) stays undeployed until the owner reconnects Vercel Git to this repository
+  (owner action D9). `NEXT_PUBLIC_SENTRY_DSN` is already set on the Vercel project (Sentry project
+  `community-collaborations-web`, org `personal-yu0`).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Boundaries
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize an
-```
+- Browser-only apart from the stateless `/api/mcp` route.

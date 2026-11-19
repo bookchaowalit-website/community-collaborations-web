@@ -1,54 +1,222 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
-import { EMPTY_DRAFT, STATUSES, addNote, countLiving, filterNotes, noteStore, removeNote, type Draft } from "@/lib/collaborations";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { AppFoot, AppTop, ListButton, Pill, PlusIcon, type Tone } from "@/components/app-shell";
+import { EMPTY_DRAFT, STATUSES, addNote, countLiving, formatAdded, noteStore, notesIn, restoreNote, type Draft, type Filter, type Note, type Status } from "@/lib/collaborations";
+
+type Removed = { note: Note; beforeId: string | null; nextShown?: string; prevShown?: string; viaKeyboard: boolean };
+
+const TONE: Record<Status, Tone> = { Draft: "grey", Open: "amber", Active: "green", Done: "grey" };
+const FILTERS: Filter[] = ["All", ...STATUSES];
+
+// randomUUID only exists in secure contexts (HTTPS/localhost) and newer browsers.
+function createId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `note-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function Home() {
-  const items = useSyncExternalStore(noteStore.subscribe, noteStore.getSnapshot, noteStore.getServerSnapshot);
+  const notes = useSyncExternalStore(noteStore.subscribe, noteStore.getSnapshot, noteStore.getServerSnapshot);
+  const setNotes = noteStore.update;
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("All");
+  const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
-  const filtered = filterNotes(items, query);
-  const addItem = () => {
-    if (!draft.title.trim()) return;
-    noteStore.update((current) => addNote(current, draft, crypto.randomUUID(), Date.now()));
+  const [removed, setRemoved] = useState<Removed | null>(null);
+  const [toastFocused, setToastFocused] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const newRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const toastRef = useRef<HTMLDivElement>(null);
+  const wasComposing = useRef(false);
+  const focusNext = useRef<string[] | null>(null);
+  const visible = useMemo(() => notesIn(notes, filter, query), [notes, filter, query]);
+  const living = countLiving(notes);
+  const countOf = (value: Filter) => (value === "All" ? notes.length : notes.filter((item) => item.status === value).length);
+
+  // Opening the composer focuses the title; closing it returns focus to New note.
+  useEffect(() => {
+    if (composing) titleRef.current?.focus();
+    else if (wasComposing.current) newRef.current?.focus();
+    wasComposing.current = composing;
+  }, [composing]);
+  useEffect(() => { if (removed?.viaKeyboard) undoRef.current?.focus(); }, [removed]);
+  // After the toast closes, focus goes to the nearest row still shown, else New note.
+  useEffect(() => {
+    const ids = focusNext.current;
+    if (removed || !ids) return;
+    focusNext.current = null;
+    const rows = [...document.querySelectorAll<HTMLElement>(".as-row[data-note]")];
+    const row = ids.map((id) => rows.find((r) => r.dataset.note === id)).find(Boolean);
+    (row?.querySelector<HTMLButtonElement>(".as-danger") ?? newRef.current ?? titleRef.current)?.focus();
+  }, [removed, notes]);
+  // Reserve the toast's height at the bottom so a control focused behind it scrolls clear.
+  const toastShown = removed !== null;
+  useLayoutEffect(() => {
+    const toast = toastRef.current;
+    if (!toastShown || !toast) return;
+    const rootStyle = document.documentElement.style;
+    const reserve = () => rootStyle.setProperty("--as-toast-space", `${toast.offsetHeight + 32}px`);
+    reserve();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(reserve) : null;
+    observer?.observe(toast);
+    return () => { observer?.disconnect(); rootStyle.removeProperty("--as-toast-space"); };
+  }, [toastShown]);
+  // The toast closes 6 s after a removal, but never while it holds focus.
+  useEffect(() => {
+    if (!removed || toastFocused) return;
+    const timer = window.setTimeout(() => setRemoved(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [removed, toastFocused]);
+
+  function add(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const next = addNote(notes, draft, createId(), Date.now());
+    if (next === notes) return;
+    const note = next[0];
+    setNotes((items) => [note, ...items]);
+    const status = note.status as Status;
+    if (filter !== "All" && filter !== status) setFilter(status);
+    setQuery("");
+    setAnnouncement(`Added “${note.title}”.`);
     setDraft(EMPTY_DRAFT);
-  };
-  const openCount = countLiving(items);
+    setComposing(false);
+  }
+  function clearSearch() {
+    setQuery("");
+    searchRef.current?.focus();
+  }
+  function remove(note: Note, viaKeyboard: boolean) {
+    const index = notes.findIndex((item) => item.id === note.id);
+    if (index < 0) return;
+    const shownAt = visible.findIndex((item) => item.id === note.id);
+    setNotes((items) => items.filter((item) => item.id !== note.id));
+    setRemoved({ note, beforeId: notes[index + 1]?.id ?? null, nextShown: visible[shownAt + 1]?.id, prevShown: shownAt > 0 ? visible[shownAt - 1].id : undefined, viaKeyboard });
+    setAnnouncement(`Removed “${note.title}”. Undo is available for a few seconds.`);
+  }
+  function closeToast(ids?: string[]) {
+    focusNext.current = ids ?? [removed?.nextShown, removed?.prevShown].filter((id): id is string => Boolean(id));
+    setRemoved(null);
+    setToastFocused(false);
+  }
+  function undo() {
+    if (!removed) return;
+    const { note, beforeId } = removed;
+    setNotes((items) => restoreNote(items, note, beforeId));
+    setAnnouncement(`Restored “${note.title}”.`);
+    closeToast([note.id]);
+  }
+
+  const title = filter === "All" ? "All notes" : filter;
 
   return (
-    <main className="folio-shell">
-      <header className="folio-header">
-        <div className="folio-mark" aria-hidden="true"><span>✳</span><span>✿</span><span>✳</span></div>
-        <div>
-          <p className="folio-kicker">COLLABORATIONS / FIELD FOLIO</p>
-          <h1>Grow the right work<br /><em>with the right people.</em></h1>
-          <p className="folio-intro">A small, local notebook for ideas that want another set of hands. Keep the request, the context, and its living status in one place.</p>
+    <div className="as">
+      <a className="as-skip" href="#main">Skip to content</a>
+      <AppTop name="Collaborations" tagline="Ideas that want another set of hands" />
+
+      <div className="as-body">
+        <aside className="as-side" aria-label="Lists">
+          <h2>By status</h2>
+          <ul className="as-lists">
+            {FILTERS.map((value) => (
+              <ListButton key={value} label={value === "All" ? "All notes" : value} count={countOf(value)} tone={value === "All" ? undefined : TONE[value]} current={filter === value} onSelect={() => setFilter(value)} />
+            ))}
+          </ul>
+        </aside>
+
+        <main id="main" className="as-main">
+          <div className="as-head">
+            <div>
+              <h1>{title}</h1>
+              <p aria-live="polite">{visible.length} {visible.length === 1 ? "note" : "notes"}{query.trim() ? ` matching “${query.trim()}”` : ""}{filter === "All" ? ` · ${living} living (Open or Active)` : ""}</p>
+            </div>
+            <div className="as-tools">
+              <label className="as-search">
+                <span className="as-sr">Search notes</span>
+                <input ref={searchRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" />
+              </label>
+              {composing ? null : <button ref={newRef} type="button" className="as-button" onClick={() => setComposing(true)}><PlusIcon />New note</button>}
+            </div>
+          </div>
+
+          {composing ? (
+            <form className="as-composer" onSubmit={add} aria-label="New note">
+              <label className="as-field">Title
+                <input ref={titleRef} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What wants to happen?" autoComplete="off" required />
+              </label>
+              <label className="as-field">Details
+                <textarea value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} placeholder="The useful context for a collaborator" rows={3} />
+              </label>
+              <div className="as-composer-foot">
+                <div className="as-segmented-wrap">
+                  <span id="state-label">Status</span>
+                  <div className="as-segmented" role="group" aria-labelledby="state-label">
+                    {STATUSES.map((status) => (
+                      <button key={status} type="button" aria-pressed={draft.status === status} onClick={() => setDraft({ ...draft, status })}>{status}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="as-composer-actions">
+                  <button type="button" className="as-plain" onClick={() => { setComposing(false); setDraft(EMPTY_DRAFT); }}>Cancel</button>
+                  <button type="submit" className="as-button" disabled={!draft.title.trim()}>Add</button>
+                </div>
+              </div>
+            </form>
+          ) : null}
+
+          {visible.length ? (
+            <ul className="as-list" aria-label={title}>
+              {visible.map((note) => (
+                <li className="as-row" key={note.id} data-note={note.id}>
+                  <div>
+                    <h3>{note.title}</h3>
+                    <p className="as-row-detail">{note.body || "No detail recorded yet."}</p>
+                    <p className="as-row-meta">Added <time dateTime={new Date(note.createdAt).toISOString()}>{formatAdded(note.createdAt)}</time></p>
+                  </div>
+                  <Pill tone={TONE[note.status as Status] ?? "grey"}>{note.status}</Pill>
+                  <button type="button" className="as-plain as-danger" aria-label={`Remove ${note.title}`} onClick={(event) => remove(note, event.detail === 0)}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="as-list as-empty">
+              {query.trim() ? (
+                <>
+                  <strong>Nothing matches</strong>
+                  No note in {filter === "All" ? "your folio" : title} mentions “{query.trim()}”.
+                  <div className="as-actions-row co-center"><button type="button" className="as-plain" onClick={clearSearch}>Clear search</button></div>
+                </>
+              ) : notes.length === 0 ? (
+                <><strong>No notes yet</strong>Press New note to write down the first idea that wants a collaborator.</>
+              ) : (
+                <><strong>Nothing is {title} yet</strong>Press New note and pick {title} as its status to add one here.</>
+              )}
+            </div>
+          )}
+
+          <p className="as-note">Saved in this browser only. No account and no backend: nothing is shared with anyone.</p>
+        </main>
+      </div>
+
+      <p className="as-sr" role="status" aria-live="polite">{announcement}</p>
+      {removed ? (
+        <div
+          ref={toastRef}
+          className="as-toast"
+          role="group"
+          aria-label="Undo remove"
+          onFocus={() => setToastFocused(true)}
+          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setToastFocused(false); }}
+          onKeyDown={(event) => { if (event.key === "Escape") closeToast(); }}
+        >
+          <span>Removed “{removed.note.title}”</span>
+          <button ref={undoRef} type="button" className="as-plain" onClick={undo} aria-label="Undo remove">Undo</button>
         </div>
-        <div className="folio-index"><span>PLATE</span><strong>06</strong><small>local / private</small></div>
-      </header>
+      ) : null}
 
-      <section className="folio-stage" aria-labelledby="stage-title">
-        <div className="stem" aria-hidden="true"><i /><i /><i /><i /></div>
-        <div className="stage-copy"><p className="section-label">CURRENT GARDEN</p><h2 id="stage-title">{openCount || "No"} living {openCount === 1 ? "thread" : "threads"}</h2><p>Each entry is a seed. Give it enough detail to know whether it should grow.</p></div>
-        <div className="stage-stats"><span><b>{items.length}</b> total notes</span><span><b>{filtered.length}</b> in view</span></div>
-      </section>
-
-      <section className="folio-workbench" aria-labelledby="new-note-title">
-        <div className="workbench-label"><span className="pin" /><p className="section-label">PLANT A NEW NOTE</p><p>Local browser storage only.</p></div>
-        <div className="workbench-form">
-          <label><span>Title</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What wants to happen?" /></label>
-          <label><span>Details</span><textarea value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} placeholder="The useful context for a collaborator…" /></label>
-          <label><span>Status</span><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
-          <button id="new-note-title" className="seed-button" onClick={addItem}>Plant note <span>→</span></button>
-        </div>
-      </section>
-
-      <section className="folio-list" aria-labelledby="notes-title">
-        <div className="list-heading"><div><p className="section-label">THE SPECIMENS</p><h2 id="notes-title">Collaboration notes</h2></div><label className="search-field"><span>Search the folio</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="title, detail, status" /></label></div>
-        {filtered.length === 0 ? <p className="empty-note">Nothing in this patch. Try a different search or plant a new note above.</p> : <ol className="note-list">{filtered.map((item, index) => <li key={item.id} className="note-row"><span className="row-number">{String(index + 1).padStart(2, "0")}</span><div className="note-copy"><h3>{item.title}</h3><p>{item.body || "No detail recorded yet."}</p></div><span className={`status status-${item.status.toLowerCase()}`}>{item.status}</span><button className="remove-button" onClick={() => noteStore.update((current) => removeNote(current, item.id))}>Remove</button></li>)}</ol>}
-      </section>
-
-      <footer className="folio-footer"><span>COLLABORATIONS / 2026</span><span>State stays in this browser. No backend is implied.</span></footer>
-    </main>
+      <AppFoot source="https://github.com/bookchaowalit-website/community-collaborations-web" />
+    </div>
   );
 }

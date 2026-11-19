@@ -129,3 +129,16 @@ describe("createNoteStore", () => {
     expect(store.getSnapshot().map((entry) => entry.id)).toEqual(["mem"]);
   });
 });
+
+describe("notesIn, restoreNote and formatAdded", () => {
+  it("filters by status and query, restores in place, formats in UTC", async () => {
+    const { SEED, notesIn, restoreNote, formatAdded } = await import("@/lib/collaborations");
+    const [a, b] = SEED;
+    expect(notesIn(SEED, "Draft", "").map((n) => n.id)).toEqual(["2"]);
+    expect(notesIn(SEED, "All", "docs").map((n) => n.id)).toEqual(["1"]);
+    expect(restoreNote([b], a, b.id)).toEqual([a, b]);
+    expect(restoreNote([a], b, null)).toEqual([a, b]);
+    expect(restoreNote([a, b], b, null)).toEqual([a, b]);
+    expect(formatAdded(Date.UTC(2026, 7, 18, 23))).toBe("18 Aug 2026");
+  });
+});

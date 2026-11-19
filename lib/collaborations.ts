@@ -112,3 +112,23 @@ export function createNoteStore(getStorage: () => StorageLike | undefined, key =
 }
 
 export const noteStore = createNoteStore(() => (typeof window === "undefined" ? undefined : window.localStorage));
+
+export type Status = (typeof STATUSES)[number];
+export type Filter = "All" | Status;
+
+/** Notes in `filter` ("All" for every status) that match `query`. */
+export function notesIn(notes: Note[], filter: Filter, query: string): Note[] {
+  return filterNotes(notes, query).filter((note) => filter === "All" || note.status === filter);
+}
+
+/** Put a removed note back before the note that followed it (or at the end), for Undo. */
+export function restoreNote(notes: Note[], note: Note, beforeId: string | null): Note[] {
+  if (notes.some((item) => item.id === note.id)) return notes;
+  const at = beforeId ? notes.findIndex((item) => item.id === beforeId) : -1;
+  return at < 0 ? [...notes, note] : [...notes.slice(0, at), note, ...notes.slice(at)];
+}
+
+/** "18 Aug 2026" in UTC, so the server and every browser print the same date. */
+export function formatAdded(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}

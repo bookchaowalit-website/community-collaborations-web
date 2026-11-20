@@ -190,3 +190,29 @@ describe("full note detail", () => {
     expect(row.querySelector("time")).toBeNull();
   });
 });
+
+describe("round 2: counts and names", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("while searching, the count says matches out of the notes in the list, and living counts the matches", () => {
+    type($<HTMLInputElement>(".as-search input")!, "research");
+    expect($(".as-head p")!.textContent).toBe("1 of 2 notes match “research” · 0 living (Open or Active)");
+    press(button("Open", $(".as-side")!));
+    expect($(".as-head p")!.textContent).toBe("0 of 1 note match “research”");
+  });
+
+  it("Show more names the note it opens", () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(200);
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("as-row-detail") ? 400 : 200;
+    });
+    act(() => root.unmount());
+    root = createRoot(host);
+    act(() => root.render(<Home />));
+    const more = button("Show more");
+    expect(more.textContent).toBe("Show more for Open source docs");
+    expect(more.querySelector(".as-sr")!.textContent).toBe(" for Open source docs");
+    press(more);
+    expect(more.textContent).toBe("Show less for Open source docs");
+  });
+});

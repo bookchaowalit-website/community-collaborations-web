@@ -19,7 +19,7 @@ function createId(): string {
 }
 
 // One line of the note's details per row (App shell rule); a longer one gets Show more, so the full text can still be read.
-function RowDetail({ text }: { text: string }) {
+function RowDetail({ text, title }: { text: string; title: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const id = useId();
   const [expanded, setExpanded] = useState(false);
@@ -49,7 +49,7 @@ function RowDetail({ text }: { text: string }) {
       <p ref={ref} id={id} className="as-row-detail" data-expanded={expanded ? "true" : undefined}>{text}</p>
       {long ? (
         <button type="button" className="as-plain as-row-more" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? "Show less" : "Show more"}<span className="as-sr"> for {title}</span>
         </button>
       ) : null}
     </>
@@ -162,6 +162,13 @@ export default function Home() {
   }
 
   const title = filter === "All" ? "All notes" : filter;
+  // While searching, say what the number counts: matches out of the notes in this list. "Living" counts the
+  // same notes as the number before it (the matches while searching), never the whole folio.
+  const searching = query.trim();
+  const inList = countOf(filter);
+  const countLine = searching
+    ? `${visible.length} of ${inList} ${inList === 1 ? "note" : "notes"} match “${searching}”${filter === "All" ? ` · ${countLiving(visible)} living (Open or Active)` : ""}`
+    : `${visible.length} ${visible.length === 1 ? "note" : "notes"}${filter === "All" ? ` · ${living} living (Open or Active)` : ""}`;
 
   return (
     <div className="as">
@@ -182,7 +189,7 @@ export default function Home() {
           <div className="as-head">
             <div>
               <h1>{title}</h1>
-              <p aria-live="polite">{visible.length} {visible.length === 1 ? "note" : "notes"}{query.trim() ? ` matching “${query.trim()}”` : ""}{filter === "All" ? ` · ${living} living (Open or Active)` : ""}</p>
+              <p aria-live="polite">{countLine}</p>
             </div>
             <div className="as-tools">
               <label className="as-search">
@@ -224,7 +231,7 @@ export default function Home() {
                 <li className="as-row" key={note.id} data-note={note.id}>
                   <div>
                     <h3>{note.title}</h3>
-                    <RowDetail text={note.body || "No detail recorded yet."} />
+                    <RowDetail title={note.title} text={note.body || "No detail recorded yet."} />
                     <p className="as-row-meta">{addedIso(note.createdAt) ? <>Added <time dateTime={addedIso(note.createdAt)!}>{formatAdded(note.createdAt)}</time></> : "Added date unknown"}</p>
                   </div>
                   <Pill tone={TONE[note.status as Status] ?? "grey"}>{note.status}</Pill>

@@ -13,7 +13,7 @@ describe("home page", () => {
     expect(html).toContain("Field notes exchange");
     expect(html).toMatch(/All notes<\/span><span class="as-count">2</);
     // The count says both numbers, so "1 living" and "2 notes" no longer look contradictory.
-    expect(html).toContain("2<!-- --> <!-- -->notes<!-- --> · 1 living (Open or Active)");
+    expect(html).toContain("2 notes · 1 living (Open or Active)");
     expect(html).toContain("No account and no backend");
     expect(html).toContain('href="https://bookchaowalit.com/"');
   });

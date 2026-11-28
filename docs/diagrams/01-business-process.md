@@ -12,7 +12,7 @@ flowchart LR
   PUSH -. "no auto deploy: Git link names old repo [ต้องยืนยัน]" .-> VERCEL["Vercel project"]
   OWNER["owner runs Vercel CLI deploy, separate from CI"] --> VERCEL
   VERCEL --> SITE["live site"]
-  SITE --> PAGE["app/page.tsx client page"]
+  SITE -. "live lags main until Git relink, 6c6e712 on 2026-10-23 [ต้องยืนยัน]" .-> PAGE["app/page.tsx client page, as in main"]
   PAGE --> LOAD{"localStorage collabs-v1 readable and valid?"}
   LOAD -->|"no, bad JSON or blocked"| SEED["2 sample notes"]
   LOAD -->|yes| LIST["saved notes via parseNotes, wrong-shape dropped"]
@@ -20,11 +20,15 @@ flowchart LR
   LIST --> VIEW
   VIEW --> ADD{"title filled?"}
   ADD -->|no| NOOP["list unchanged, nothing written"]
-  ADD -->|yes| WRITE["noteStore.update: note planted on top"]
+  ADD -->|yes| ADDN["new note planted on top"]
+  ADDN --> WRITE["noteStore.update: save notes"]
   VIEW --> RM["Remove, toast with Undo: restoreNote"]
-  RM --> WRITE
-  WRITE --> TABS["storage event refreshes other tabs"]
-  WRITE -->|"storage blocked or full"| MEM["kept in memory for this visit only"]
+  RM --> DEL["remove: saved notes minus this note"]
+  DEL --> WRITE
+  DEL --> UNDO["Undo in toast: restoreNote puts it back before its old neighbour"]
+  UNDO --> WRITE
+  WRITE -->|"localStorage write ok"| TABS["storage event refreshes other tabs"]
+  WRITE -->|"storage blocked or full"| MEM["kept in memory for this tab only, no storage event"]
   PAGE -. "error, only if NEXT_PUBLIC_SENTRY_DSN set" .-> SENTRY["Sentry, errors only: beforeSend drops request, user, breadcrumbs, extra, stack vars and URL queries"]
   MCPCALL["MCP client POST /api/mcp"] --> MCP{"method"}
   MCP -->|"initialize, tools/list"| EMPTY["answers, tool list is empty"]

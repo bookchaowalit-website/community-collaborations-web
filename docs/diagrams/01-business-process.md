@@ -29,6 +29,7 @@ flowchart LR
   UNDO --> WRITE
   WRITE -->|"localStorage write ok"| TABS["storage event refreshes other tabs"]
   WRITE -->|"storage blocked or full"| MEM["kept in memory for this tab only, no storage event"]
+  SRV["server request error: instrumentation onRequestError"] -. "only if DSN set, same scrub" .-> SENTRY
   PAGE -. "error, only if NEXT_PUBLIC_SENTRY_DSN set" .-> SENTRY["Sentry, errors only: beforeSend drops request, user, breadcrumbs, extra, stack vars and URL queries"]
   MCPCALL["MCP client POST /api/mcp"] --> MCP{"method"}
   MCP -->|"initialize, tools/list"| EMPTY["answers, tool list is empty"]
